@@ -246,8 +246,6 @@ if __name__ == '__main__':
     attacker_list = list(set(np.random.choice(args.num_users, args.num_attackers, replace=False)))
     print('attacker list:', attacker_list)
 
-    # for a in attacker_list:
-    #     user_groups.pop(a)
 
     clean_model = get_encoder_architecture_usage(args).cuda()
     model = get_encoder_architecture_usage(args).cuda()
@@ -399,7 +397,6 @@ if __name__ == '__main__':
                     print('local weight length:',len(local_weights))
                     print('local weight length_:',len(local_weights_))
                     if len(local_weights_) > 0:
-                        # w = average_weights(local_weights_)
                         w = local_weights_[0]
                     else:
                         w = copy.deepcopy(global_model.state_dict())
@@ -415,8 +412,6 @@ if __name__ == '__main__':
                     else:
                         raise NotImplementedError()
 
-                # for i in range(1):
-                #    _,_ = local_train(model, normal_loader, local_training_optimizer, i+1, args)
 
                 model.load_state_dict(backdoored_weights, strict=False)
                 local_weights.append(copy.deepcopy(model.state_dict()))
@@ -573,104 +568,6 @@ if __name__ == '__main__':
         # alpha = [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1]
         # update_w = geometric_median_update(local_weights, alpha)
         # global_model.load_state_dict(update_w)
-
-        # """Our EmbInspector"""
-        # print('========== EmbInspector ==========')
-        #
-        # # Creating detecting data
-        # detect_data_path = 'data/cifar100/server_data_10.npz'
-        # server_detect_data = get_server_detect(args, detect_data_path)
-        # detecet_loader = DataLoader(
-        #     server_detect_data,
-        #     batch_size=1,
-        #     shuffle=True,
-        #     # num_workers=2,
-        #     pin_memory=True,
-        #     drop_last=True
-        # )
-        #
-        # detecet_feature_set = []
-        # for weight in local_weights:
-        #     local_detecet_feature_list = []
-        #     detect_model.load_state_dict(weight)
-        #     detect_model.eval()
-        #
-        #     for detect_img in tqdm(detecet_loader):
-        #         detect_img = detect_img.cuda(non_blocking=True)
-        #         feature = detect_model.f(detect_img)
-        #         feature = F.normalize(feature, dim=-1)
-        #         local_detecet_feature_list.append(feature)
-        #     # print(len(local_detecet_feature_list))
-        #     detecet_feature_set.append(local_detecet_feature_list)
-        #
-        # cosine_similarity_list = []
-        #
-        # # initialize the malicious score
-        # malicious_score = []
-        # for i in range(len(detecet_feature_set)):
-        #     malicious_score.append(0)
-        #
-        # print('=========== Malicious scores computing ==========')
-        # # caculate the cosine simlarity
-        # for detect_iter in tqdm(range(len(local_detecet_feature_list))):  # iterate for len(detect images)
-        #     detecet_list = []
-        #     for c in range(len(detecet_feature_set)): # compute pair-wise cos sim distance
-        #         similarity = 0
-        #         for client in range(len(detecet_feature_set)):
-        #             # cosine similarity
-        #             similarity += torch.sum(detecet_feature_set[c][detect_iter] * detecet_feature_set[client][detect_iter], dim=-1).mean()
-        #             # L2 distance
-        #             # list1_temp = [item.cpu().detach().numpy() for item in detecet_feature_set[c][detect_iter]]
-        #             # list2_temp = [item.cpu().detach().numpy() for item in detecet_feature_set[client][detect_iter]]
-        #             # list_temp = [list1_temp[0],list2_temp[0]]
-        #             # print(np.asarray(list_temp).shape)
-        #             # similarity -= torch.pdist(torch.tensor(list_temp), p=2).mean()
-        #         similarity = similarity.cpu().detach().numpy()
-        #         detecet_list.append(similarity)
-        #
-        #     detecet_list = np.asarray(detecet_list).reshape(-1, 1)
-        #
-        #     copy_list = copy.deepcopy(detecet_list)
-        #
-        #     list_len = len(copy_list)
-        #     if list_len % 2 == 0:
-        #         sim_median = (copy_list[int(list_len / 2)] + copy_list[int(list_len / 2 - 1)]) / 2
-        #     else:
-        #         sim_median = copy_list[int((list_len + 1) / 2 - 1)]
-        #
-        #     # compute avg
-        #     sim_avg = np.mean(detecet_list)
-        #
-        #     decision_boundary = max(sim_avg, sim_median)
-        #
-        #     client_index = 0
-        #     for sim in detecet_list:
-        #         if sim >= decision_boundary:
-        #             malicious_score[client_index] += 1
-        #         else:
-        #             malicious_score[client_index] -= 1
-        #         client_index += 1
-        #
-        # print('malicious scores = ',malicious_score)
-        # malicious_clients_index = []
-        # client_index = 0
-        # for s in malicious_score:
-        #     if s > 0:
-        #         malicious_clients_index.append(client_index)
-        #     client_index += 1
-        #
-        # print('malicious client are:',malicious_clients_index)
-        # malicious_clients_index.reverse()
-        #
-        # for attacker in malicious_clients_index:
-        #     local_weights.pop(attacker)
-        #
-        # if len(local_weights) == 0:
-        #     global_model = copy.deepcopy(global_model)
-        # else:
-        #     global_weights = average_weights(local_weights)
-        #     global_model.load_state_dict(global_weights)
-
 
 
         loss_avg = sum(local_losses) / len(local_losses)
