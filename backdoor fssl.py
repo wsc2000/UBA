@@ -179,25 +179,25 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Poisoning the local client to get a backdoor encoder')
     parser.add_argument('--lr', default=0.001, type=float, help='initial learning rate')
     parser.add_argument('--lr1', default=0.05, type=float, help='initial learning rate')
-    parser.add_argument('--pretraining_dataset', type=str, default='cifar100')
+    parser.add_argument('--pretraining_dataset', type=str, default='stl10')
 
     parser.add_argument('--batch_size', default=128, type=int, help='Number of images in each mini-batch')
     parser.add_argument('--lambda1', default=1.0, type=np.float64, help='value of labmda1')
     parser.add_argument('--lambda2', default=1.0, type=np.float64, help='value of labmda2')
     parser.add_argument('--poison_epochs', type=int, default=1, help='the number of poisoning epochs')
     parser.add_argument('--epochs', type=int, default=20, help="number of rounds of global training")
-    parser.add_argument('--num_users', type=int, default= 1, help="number of users: K")
-    parser.add_argument('--frac', type=float, default=1, help='the fraction of clients: C')
-    parser.add_argument('--num_attackers', type=int, default=0, help="number of attackers")
-    parser.add_argument('--local_epoch', type=int, default=30, help="the number of local epochs: E")
-    parser.add_argument('--iid', type=int, default=1, help='Default set to IID. Set to 0 for non-IID.')
+    parser.add_argument('--num_users', type=int, default= 25, help="number of users: K")
+    parser.add_argument('--frac', type=float, default=0.4, help='the fraction of clients: C')
+    parser.add_argument('--num_attackers', type=int, default=5, help="number of attackers")
+    parser.add_argument('--local_epoch', type=int, default=2, help="the number of local epochs: E")
+    parser.add_argument('--iid', type=int, default=0, help='Default set to IID. Set to 0 for non-IID.')
 
-    parser.add_argument('--reference_file', default='./reference/cifar100/camel.npz', type=str,
+    parser.add_argument('--reference_file', default='./reference/stl10/airplane.npz', type=str,
                         help='path to the reference inputs')
-    parser.add_argument('--shadow_dataset', default='cifar100', type=str, help='shadow dataset')
-    parser.add_argument('--encoder_usage_info', default='cifar100', type=str,
+    parser.add_argument('--shadow_dataset', default='stl10', type=str, help='shadow dataset')
+    parser.add_argument('--encoder_usage_info', default='stl10', type=str,
                         help='used to locate encoder usage info, e.g., encoder architecture and input normalization parameter')
-    parser.add_argument('--pretrained_encoder', default='./result/fed_badencoder/cifar100_backdoor_camel20.pth', type=str,
+    parser.add_argument('--pretrained_encoder', default='./result/fed_pretrain_encoder/fed_pretrain_encoder_stl10200.pth', type=str,
                         help='path to the clean encoder used to finetune the backdoored encoder')
 
     parser.add_argument('--results_dir', default='./result/fed_badencoder', type=str, metavar='PATH',
@@ -234,7 +234,7 @@ if __name__ == '__main__':
     torch.backends.cudnn.deterministic = True
 
     args.data_dir = f'./data/{args.pretraining_dataset}/'
-    args.reference_label = 15
+    args.reference_label = 0
     print(args)
 
     user_groups = get_usergroup(args)  # type = dict, image indics for each client
@@ -255,7 +255,7 @@ if __name__ == '__main__':
     # Initialize the BadEncoder and load the pretrained encoder
     if args.pretrained_encoder != '':
         print(f'load the clean model from {args.pretrained_encoder}')
-        if args.encoder_usage_info == 'cifar100':
+        if args.encoder_usage_info == 'cifar10':
             checkpoint = torch.load(args.pretrained_encoder)
             clean_model.load_state_dict(checkpoint['state_dict'])
             model.load_state_dict(checkpoint['state_dict'])
@@ -268,6 +268,8 @@ if __name__ == '__main__':
 
     global_model = copy.deepcopy(clean_model)
     detect_model = copy.deepcopy(clean_model)
+    # model_mem = model
+    # local_training_optimizer = torch.optim.Adam(global_model.parameters(), lr=args.lr, weight_decay=1e-6)
 
     results = {'BA': [], 'ASR_TEST': []}
     if not os.path.exists(args.results_dir):
@@ -336,7 +338,7 @@ if __name__ == '__main__':
 
                 # Define the optimizer
                 print("Fine-tune Optimizer: SGD")
-                if args.encoder_usage_info == 'cifar100':
+                if args.encoder_usage_info == 'stl10':
                     finetune_optimizer = torch.optim.SGD(model.f.parameters(), lr=args.lr1, weight_decay=5e-4,
                                                          momentum=0.9)
                 print(f'-!-!-!-!- Attacker{attacker}  Begin to poison the encoder -!-!-!-!-')
@@ -397,7 +399,8 @@ if __name__ == '__main__':
                     print('local weight length:',len(local_weights))
                     print('local weight length_:',len(local_weights_))
                     if len(local_weights_) > 0:
-                        w = average_weights(local_weights_)
+                        # w = average_weights(local_weights_)
+                        w = local_weights_[0]
                     else:
                         w = copy.deepcopy(global_model.state_dict())
                     model.load_state_dict(w,strict=False)
@@ -407,21 +410,101 @@ if __name__ == '__main__':
                    _,_ = local_train(model, normal_loader, local_training_optimizer, i+1, args)
 
                 for e in range(1, args.poison_epochs + 1):
-                    if args.encoder_usage_info == 'cifar100':
+                    if args.encoder_usage_info == 'stl10':
                         backdoored_loss, backdoored_weights = poisoning_train(model.f, clean_model.f, backdoor_train_loader, finetune_optimizer, e, args)
                     else:
                         raise NotImplementedError()
+
+                # for i in range(1):
+                #    _,_ = local_train(model, normal_loader, local_training_optimizer, i+1, args)
 
                 model.load_state_dict(backdoored_weights, strict=False)
                 local_weights.append(copy.deepcopy(model.state_dict()))
             local_weights_ = local_weights[10-attacker_num_choice:]
             print('local_weights_ length=========',len(local_weights_))
 
+            update_w = average_weights(local_weights)
+
+            if epoch >= 1:
+                def get_grad(update, model):
+                    '''get the update weight'''
+                    grad = {}
+                    for key, var in update.items():
+                        grad[key] = update[key] - model[key]
+                    return grad
+
+
+                def parameters_dict_to_vector_flt(net_dict) -> torch.Tensor:
+                    vec = []
+                    for key, param in net_dict.items():
+                        # print(key, torch.max(param))
+                        if key.split('.')[-1] == 'num_batches_tracked':
+                            continue
+                        vec.append(param.view(-1))
+                    return torch.cat(vec)
+
+                local_grad = []
+                # local_grad_norm = []
+                count = 0
+                for w in local_weights_:
+                    print('local weight before length:',len(local_weights_before))
+                    local_grad.append(parameters_dict_to_vector_flt(get_grad(w, local_weights_before[10-attacker_num_choice+count])))
+                    # local_grad_norm.append(torch.norm(parameters_dict_to_vector_flt(get_grad(w, local_weights_before[7+count]))))
+                    count += 1
+                global_g = get_grad(update_w, copy.deepcopy(global_model.state_dict()))
+                global_g = parameters_dict_to_vector_flt(global_g)
+
+                weight_measure = []
+                for g in local_grad:
+                    weight_measure.append(torch.cosine_similarity(g, global_g, dim=0))
+                    # weight_measure.append((g - global_g))
+                print('weight measure:',weight_measure)
+                sim_sum = sum(weight_measure)
+                weighted = []
+                for i in weight_measure:
+                    weighted.append(i / sim_sum)
+
+                for w in weighted:
+                    if w >= 10:
+                        for i in range(len(weighted)):
+                            weighted[i] = 1/attacker_num_choice
+                        break
+                print(weighted)
+
+                if len(attacker_list_) == 5:
+                    for key in local_weights_[0].keys():
+                        local_weights_[0][key] = weighted[0] * local_weights_[0][key] + weighted[1] * local_weights_[1][
+                            key] + weighted[2] * local_weights_[2][key] + weighted[3] * local_weights_[3][key]+ weighted[4] * local_weights_[4][key]
+                    local_weights_[1] = local_weights_[0]
+                    local_weights_[2] = local_weights_[0]
+                elif len(attacker_list_) == 4:
+                    for key in local_weights_[0].keys():
+                        local_weights_[0][key] = weighted[0] * local_weights_[0][key] + weighted[1] * local_weights_[1][key] + weighted[2] * local_weights_[2][key] + weighted[3] * local_weights_[3][key]
+                    local_weights_[1] = local_weights_[0]
+                    local_weights_[2] = local_weights_[0]
+                elif len(attacker_list_) == 3:
+                    for key in local_weights_[0].keys():
+                        local_weights_[0][key] = weighted[0] * local_weights_[0][key] + weighted[1] * local_weights_[1][key] + weighted[2] * local_weights_[2][key]
+                    local_weights_[1] = local_weights_[0]
+                    local_weights_[2] = local_weights_[0]
+                elif len(attacker_list_) == 2:
+                    for key in local_weights_[0].keys():
+                        local_weights_[0][key] = weighted[0] * local_weights_[0][key] + weighted[1] * local_weights_[1][key]
+                    local_weights_[1] = local_weights_[0]
+                elif len(attacker_list_) == 1:
+                    for key in local_weights_[0].keys():
+                        local_weights_[0][key] = weighted[0] * local_weights_[0][key]
+
+            global_model.load_state_dict(update_w)
+
+
+
+
         """Defense Mechanisms (Aggregation Rules)"""
 
-        """AVG Aggregator"""
-        update_w = average_weights(local_weights)
-        global_model.load_state_dict(update_w)
+        # """AVG Aggregator"""
+        # update_w = average_weights(local_weights)
+        # global_model.load_state_dict(update_w)
 
         # """gradients calculating"""
         # def get_grad(update, model):
@@ -491,6 +574,105 @@ if __name__ == '__main__':
         # update_w = geometric_median_update(local_weights, alpha)
         # global_model.load_state_dict(update_w)
 
+        # """Our EmbInspector"""
+        # print('========== EmbInspector ==========')
+        #
+        # # Creating detecting data
+        # detect_data_path = 'data/cifar100/server_data_10.npz'
+        # server_detect_data = get_server_detect(args, detect_data_path)
+        # detecet_loader = DataLoader(
+        #     server_detect_data,
+        #     batch_size=1,
+        #     shuffle=True,
+        #     # num_workers=2,
+        #     pin_memory=True,
+        #     drop_last=True
+        # )
+        #
+        # detecet_feature_set = []
+        # for weight in local_weights:
+        #     local_detecet_feature_list = []
+        #     detect_model.load_state_dict(weight)
+        #     detect_model.eval()
+        #
+        #     for detect_img in tqdm(detecet_loader):
+        #         detect_img = detect_img.cuda(non_blocking=True)
+        #         feature = detect_model.f(detect_img)
+        #         feature = F.normalize(feature, dim=-1)
+        #         local_detecet_feature_list.append(feature)
+        #     # print(len(local_detecet_feature_list))
+        #     detecet_feature_set.append(local_detecet_feature_list)
+        #
+        # cosine_similarity_list = []
+        #
+        # # initialize the malicious score
+        # malicious_score = []
+        # for i in range(len(detecet_feature_set)):
+        #     malicious_score.append(0)
+        #
+        # print('=========== Malicious scores computing ==========')
+        # # caculate the cosine simlarity
+        # for detect_iter in tqdm(range(len(local_detecet_feature_list))):  # iterate for len(detect images)
+        #     detecet_list = []
+        #     for c in range(len(detecet_feature_set)): # compute pair-wise cos sim distance
+        #         similarity = 0
+        #         for client in range(len(detecet_feature_set)):
+        #             # cosine similarity
+        #             similarity += torch.sum(detecet_feature_set[c][detect_iter] * detecet_feature_set[client][detect_iter], dim=-1).mean()
+        #             # L2 distance
+        #             # list1_temp = [item.cpu().detach().numpy() for item in detecet_feature_set[c][detect_iter]]
+        #             # list2_temp = [item.cpu().detach().numpy() for item in detecet_feature_set[client][detect_iter]]
+        #             # list_temp = [list1_temp[0],list2_temp[0]]
+        #             # print(np.asarray(list_temp).shape)
+        #             # similarity -= torch.pdist(torch.tensor(list_temp), p=2).mean()
+        #         similarity = similarity.cpu().detach().numpy()
+        #         detecet_list.append(similarity)
+        #
+        #     detecet_list = np.asarray(detecet_list).reshape(-1, 1)
+        #
+        #     copy_list = copy.deepcopy(detecet_list)
+        #
+        #     list_len = len(copy_list)
+        #     if list_len % 2 == 0:
+        #         sim_median = (copy_list[int(list_len / 2)] + copy_list[int(list_len / 2 - 1)]) / 2
+        #     else:
+        #         sim_median = copy_list[int((list_len + 1) / 2 - 1)]
+        #
+        #     # compute avg
+        #     sim_avg = np.mean(detecet_list)
+        #
+        #     decision_boundary = max(sim_avg, sim_median)
+        #
+        #     client_index = 0
+        #     for sim in detecet_list:
+        #         if sim >= decision_boundary:
+        #             malicious_score[client_index] += 1
+        #         else:
+        #             malicious_score[client_index] -= 1
+        #         client_index += 1
+        #
+        # print('malicious scores = ',malicious_score)
+        # malicious_clients_index = []
+        # client_index = 0
+        # for s in malicious_score:
+        #     if s > 0:
+        #         malicious_clients_index.append(client_index)
+        #     client_index += 1
+        #
+        # print('malicious client are:',malicious_clients_index)
+        # malicious_clients_index.reverse()
+        #
+        # for attacker in malicious_clients_index:
+        #     local_weights.pop(attacker)
+        #
+        # if len(local_weights) == 0:
+        #     global_model = copy.deepcopy(global_model)
+        # else:
+        #     global_weights = average_weights(local_weights)
+        #     global_model.load_state_dict(global_weights)
+
+
+
         loss_avg = sum(local_losses) / len(local_losses)
         train_loss.append(loss_avg)
         print(f'Average loss of all clients:{loss_avg}')
@@ -528,7 +710,7 @@ if __name__ == '__main__':
         results['BA'].append(ba)
         results['ASR_TEST'].append(asr_test)
         data_frame = pd.DataFrame(data=results, index=range(1, epoch + 1))
-        data_frame.to_csv(args.results_dir + '/cifar_iid_eminspector.csv', index_label='epoch')
+        data_frame.to_csv(args.results_dir + '/SBA.csv', index_label='epoch')
 
         if epoch % args.epochs == 0:
             torch.save(
