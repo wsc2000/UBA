@@ -402,7 +402,7 @@ if __name__ == '__main__':
                         w = copy.deepcopy(global_model.state_dict())
                     model.load_state_dict(w,strict=False)
                 local_weights_before.append(copy.deepcopy(model.state_dict()))
-
+                local_training_optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-6)
                 for i in range(1):
                    _,_ = local_train(model, normal_loader, local_training_optimizer, i+1, args)
 
